@@ -10,14 +10,3 @@ const xml2string = (xmlstr) => {
 }
 
 module.exports = xml2string
-
-const json2xml = (jsonstr) => {
-    try {
-        return convert.json2xml(jsonstr, { compact: true, spaces: 2 });
-    } catch (err) {
-        console.log("ERR =>", err);
-        return { error: err }
-    }
-}
-
-module.exports = json2xml
