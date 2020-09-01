@@ -13,29 +13,29 @@ class Message {
         this.response = "";
     }
 
-    // get updateQuery(res) {
-    //     return this.makeUpdateQuery(res);
-    // }
-
     tmUpdateQuery = () => {
-        return `UPDATE DEVELOPERS.minsal_integracion SET STRRESPUESTA = '${this.response}', BYTESTADO = ${this.state}, IDMUESTRAMINSAL = ${this.minsalSample}
- WHERE IDMENSAJE = ${this.idmensaje}`
-    }
-
-    tmckUpdateQuery() {
-        return `UPDATE DEVELOPERS.minsal_integracion SET IDMUESTRAMINSAL = ${this.minsalSample} WHERE STRIDRICHIESTA = '${this.dnlabReqID}'`
+        return `UPDATE DEVELOPERS.minsal_integracion 
+                SET STRRESPUESTA = '${this.response}', 
+                    BYTESTADO = ${this.state}, 
+                    IDMUESTRAMINSAL = ${this.minsalSample}
+                WHERE IDMENSAJE = ${this.idmensaje}`
     }
 
     ckUpdateQuery() {
-        return `UPDATE DEVELOPERS.minsal_integracion SET STRRESPUESTA = '${this.response}', BYTESTADO = ${this.state}, IDMUESTRAMINSAL = ${this.minsalSample} WHERE IDMENSAJE = ${this.idmensaje}`
+        return `UPDATE DEVELOPERS.minsal_integracion 
+                SET STRRESPUESTA = '${this.response}', 
+                    BYTESTADO = ${this.state}, 
+                    IDMUESTRAMINSAL = ${this.minsalSample} 
+                WHERE IDMENSAJE = ${this.idmensaje}`
     }
 
-    // reUpdateQuery(res) {
-    //     return `UPDATE DEVELOPERS.minsal_integracion
-    //             SET STRRESPUESTA = '${this.response}' ,
-    //                 BYTESTADO = ${this.state} 
-    //             WHERE IDMENSAJE = ${this.idmensaje}`
-    // }
+    reUpdateQuery() {
+        return `UPDATE DEVELOPERS.minsal_integracion 
+                SET STRRESPUESTA = '${this.response}', 
+                    BYTESTADO = ${this.state}, 
+                    IDMUESTRAMINSAL = ${this.minsalSample} 
+                WHERE IDMENSAJE = ${this.idmensaje}`
+    }
 
     errUpdateQuery(res) {
         return `UPDATE DEVELOPERS.minsal_integrahcion

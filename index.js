@@ -6,25 +6,18 @@ const { Message } = require('./models/Message')
 const axios = require('axios').default;
 const env = require('./config/environment');
 const { TM } = require('./models/TM');
+const { CK } = require('./models/CK');
+const { RE } = require('./models/RE');
+const fs = require('fs');
+const FormData = require('form-data');
 
 // Initialize Webserver
 const app = express();
-const options = {
-    baseURL: env.minsalWS,
-    headers: { 'ACCESSKEY': env.akey, 'Content-Type': 'application/json' }
-}
-
-// Connect to DB
-// database.connectDB();
 
 // Init Middleware
 app.use(express.json({ extended: false }));
 
 const PORT = process.env.PORT || 5000;
-
-// app.get('/', (req, res) => {
-//     res.send('API RUNNING');
-// });
 
 // Define test route
 app.get('/test', async (req, res) => {
@@ -35,44 +28,25 @@ app.get('/test', async (req, res) => {
     res.end(`DB user: ${user}\nDate: ${date}`);
 });
 
-// app.get('/samples/:type', async (req, res) => {
-//     oracledb.fetchAsString = [oracledb.CLOB]
-
-//     const query = `SELECT * FROM DEVELOPERS.minsal_integracion WHERE STRTIPOMENSAJE = '${req.params.type.toUpperCase()}'`
-//     const result = await database.simpleExecute(query);
-
-//     if (result.rows.length === 0)
-//         console.error("No results");
-//     else {
-//         const clob = result.rows[0];
-//         console.log("CLOB =>", clob);
-//     }
-//     let msgs = new Array();
-//     result.rows.forEach(msg => {
-//         console.log(msg);
-//         msgs.push(JSON.parse(xml2string(msg.STRMENSAJE)))
-//     });
-
-//     res.send(msgs);
-// })
-
 const log = (txt) => {
     console.log(`[${new Date()}] - ${txt}`);
     console.log("==========================================================================================================");
 }
 
 app.get('/samples/test-rutine', async (req, res) => {
-    //TODO 1. Crear muestras en minsal
-    log(`Se inicia el proceso.`);
-    await tmprocess().then(async () => {
-        // //TODO 2. Recepcionar muestras
-        // await ckprocess().then(() => {
-        //     //TODO 3. Entregar Resultados
-        //     //?     - Traer 10 registros de DB tipo RE
-        // })
-    })
-    res.sendStatus(200)
-    log("EN ESPERA DEL SIGUIENTE CICLO.")
+    log(`Se inicia ciclo.`);
+
+    const endTask = () => {
+        res.sendStatus(200)
+        log("Ciclo terminado.")
+        log("En espera del siguiente ciclo.")
+    }
+
+    const tasks = [tmprocess, ckprocess, reprocess, endTask]
+
+    for (const task of tasks) {
+        await task();
+    }
 })
 
 app.get('/samples/reset', async (req, res) => {
@@ -82,34 +56,52 @@ app.get('/samples/reset', async (req, res) => {
     })
 })
 
-const createSample = async (msg) => {
-    log("Preparando llamada a WS crearMuestras")
-    const newid = Date.now();
-    msg.codigo_muestra_cliente = newid
+app.get('/samples/:type', async (req, res) => {
+    const typ = req.params.type.toUpperCase();
+    console.log("Solicitud => ", typ)
+    if (typ === 'TM' || typ === 'CK' || typ === 'RE') {
+        let response = new Array();
+        oracledb.fetchAsString = [oracledb.CLOB]
+        let query = `SELECT * FROM DEVELOPERS.minsal_integracion WHERE STRTIPOMENSAJE = '${typ}'`;
+        database.simpleExecute(query, [], { autoCommit: true }).then(async result => {
+            log(`Encontrados: ${result.rows.length} resultados.`)
+            if (result.rows.length > 0) {
+                // Procesar resultados
+                for (msg of result.rows) {
+                    response.push(msg)
+                }
+                console.log(response)
+                response = result.rows
+
+            } else {
+                // Procesar no encontrado
+            }
+            res.send(result.rows)
+        }).catch(err => console.log("Ocurrió un error => ", err))
+
+    } else {
+
+        res.json({ "ERROR": "Solicitud mal formulada." })
+    }
+})
+
+const callMinsalJSON = async (msg, endpoint) => {
+    const options = {
+        baseURL: env.minsalWS,
+        headers: { 'ACCESSKEY': env.akey, 'Content-Type': 'application/json' }
+    }
+
+    log(`Preparando llamada a WS ${endpoint}`)
     let data;
-    await axios.post('/crearMuestras', [
+    await axios.post(endpoint, [
         msg
     ], options)
         .then(response => {
             data = response
         })
         .catch(error => {
-            log(`crearMuestraWS error => ${error}`)
-            data = error
-        });
-    return data
-}
-
-const deliverSample = async (msg) => {
-    let data;
-    await axios.post('/recepcionarMuestra', [
-        msg
-    ], options)
-        .then(response => {
-            data = response.data
-        })
-        .catch(error => {
-            data = error
+            log(`WS ${endpoint} error => ${error}`)
+            data = error.response
         });
     return data
 }
@@ -125,9 +117,8 @@ const tmprocess = async () => {
     //?      - Traer 10 registros de DB tipo TM
     if (flag) {
         oracledb.fetchAsString = [oracledb.CLOB]
-        // let query = `SELECT COUNT(*) FROM DEVELOPERS.minsal_integracion`;
         let query = `SELECT * FROM DEVELOPERS.minsal_integracion WHERE STRTIPOMENSAJE = 'TM' AND BYTESTADO = 0`;
-        database.simpleExecute(query, [], { autoCommit: true }).then(async result => {
+        await database.simpleExecute(query, [], { autoCommit: true }).then(async result => {
             log(`Encontrados: ${result.rows.length} resultados.`)
             flag = result.rows.length > 0
             if (flag) {
@@ -138,14 +129,15 @@ const tmprocess = async () => {
                     newjson = JSON.parse(xml2string(msg.STRMENSAJE));
                     verynewjson = new TM(newjson.crearmuestras)
                     newmsg.xmlMSG = verynewjson
-                    await createSample(newmsg.xmlMSG).then(async result => {
+                    newmsg.xmlMSG.codigo_muestra_cliente = Date.now()
+                    await callMinsalJSON(newmsg.xmlMSG, '/crearMuestras').then(async result => {
                         log("Finalizada llamada a crearMuestraWS.")
                         if (result.status !== 200) {
                             log(`Error => ${result}`)
                             newmsg.state = -1;
-                            newmsg.response = result
+                            newmsg.response = JSON.stringify(result.data)
                         } else {
-                            log(`Muestra creada. Respuesta => ${result.data[0]}`)
+                            log(`Muestra creada. Respuesta => ${JSON.stringify(result.data[0])}`)
                             newmsg.state = 1;
                             newmsg.minsalSample = result.data[0].id_muestra;
                             newmsg.response = JSON.stringify(result.data[0]);
@@ -154,64 +146,169 @@ const tmprocess = async () => {
                         console.log("UPDATE Query => ", query);
                         await database.simpleExecute(query, [], { autoCommit: true }).then(result => {
                             console.log(result);
-                            if (result.rowsAffected > 0) {
-                                console.log(`Registro ${newmsg.idmensaje} TM actualizado`);
-                            } else {
-                                console.log(`Registro ${newmsg.idmensaje} TM NO actualizado`);
-                            }
+                            const res = result.rowsAffected > 0 ? "TM actualizado" : "TM NO actualizado";
+                            log(`Registro ${newmsg.idmensaje} ${res}`)
                             log(`Proceso finalizado para msg id:${newmsg.idmensaje}`)
                         })
+                    }).catch(err => {
+                        log('Ocurrió un error al llamar al WS crearMuestras.')
+                        console.log(err);
                     })
-                        .catch(err => {
-                            log('Ocurrió un error al llamar al WS crearMuestras.')
-                            console.log(err);
-                        })
                 };
-                // result.rows.forEach(async msg => {
-
-                // });
             } else {
                 log('NO se encontraron muestras a crear.')
             }
         }).catch(err => { console.log("Hubo un error => ", err) });
     }
+
+    return null
 }
 
 const ckprocess = async () => {
+    log('Se inicia proceso RECEPCIÓN DE MUESTRAS')
     let flag = true;
-    //?      - Traer 10 registros de DB tipo TM
+    //?      - Traer 10 registros de DB tipo CK
     if (flag) {
         oracledb.fetchAsString = [oracledb.CLOB]
-        const query = `SELECT * FROM DEVELOPERS.minsal_integracion WHERE STRTIPOMENSAJE = 'CK' WHERE BYTESTADO = 0`;
-        const result = await database.simpleExecute(query);
-        flag = result > 0
-        if (flag) {
-            result.rows.forEach(msg => {
-                newmsg = new Message(msg);
-                newjson = JSON.parse(xml2string(msg.STRMENSAJE));
-                verynewjson = new CK(newjson.recepcionarmuestra)
-                newmsg.xmlMSG = verynewjson
-                deliverSample(newmsg.xmlMSG).then(result => {
-                    newmsg.response = result[i]
-                    newmsg.minsalSample = result[i].id_muestra;
-                })
-
-                let query = newmsg.ckUpdateQuery();
-                let result = database.simpleExecute(query);
-                if (result > 0) {
-                    console.log(`Registro ${newmsg.idmensaje} CK actualizado`);
-                } else {
-                    console.log(`Registro ${newmsg.idmensaje} CK NO actualizado`);
-                }
-            });
-        }
+        let query = `SELECT * FROM DEVELOPERS.minsal_integracion WHERE STRTIPOMENSAJE = 'CK' AND BYTESTADO = 0`;
+        await database.simpleExecute(query, [], { autoCommit: true }).then(async result => {
+            log(`Encontrados: ${result.rows.length} resultados.`)
+            flag = result.rows.length > 0
+            if (flag) {
+                log('Se encontraron muestras a recepcionar.')
+                for (const msg of result.rows) {
+                    console.log(`[${new Date()}] - Recepcionando muestra => `, msg);
+                    newmsg = new Message(msg);
+                    newjson = JSON.parse(xml2string(msg.STRMENSAJE));
+                    verynewjson = new CK(newjson.recepcionarmuestra)
+                    newmsg.xmlMSG = verynewjson
+                    await callMinsalJSON(newmsg.xmlMSG, '/recepcionarMuestra').then(async result => {
+                        log("Finalizada llamada a WS recepcionarMuestra.")
+                        if (result.status !== 200) {
+                            log(`Error => ${result}`)
+                            newmsg.state = -1;
+                            newmsg.response = JSON.stringify(result.data)
+                        } else {
+                            log(`Muestra Recepcionada. Respuesta => ${JSON.stringify(result.data[0])}`)
+                            newmsg.state = 1;
+                            newmsg.response = JSON.stringify(result.data[0]);
+                        }
+                        let query = newmsg.ckUpdateQuery();
+                        console.log("UPDATE Query => ", query);
+                        await database.simpleExecute(query, [], { autoCommit: true }).then(result => {
+                            console.log(result);
+                            const res = result.rowsAffected > 0 ? "CK actualizado" : "CK NO actualizado";
+                            log(`Registro ${newmsg.idmensaje} ${res}`)
+                            log(`Proceso finalizado para msg id:${newmsg.idmensaje}`)
+                        })
+                    }).catch(err => {
+                        log('Ocurrió un error al llamar al WS recepcionarMuestra.')
+                        console.log(err);
+                    })
+                };
+            } else {
+                log('NO se encontraron muestras a recepcionar.')
+            }
+        }).catch(err => { console.log("Hubo un error => ", err) });
     }
+
+    return null
 }
+
+const reprocess = async () => {
+    log('Se inicia proceso ENTREGA DE MUESTRAS')
+    let flag = true;
+    //?      - Traer 10 registros de DB tipo RE
+    if (flag) {
+        oracledb.fetchAsString = [oracledb.CLOB]
+        let query = `SELECT * FROM DEVELOPERS.minsal_integracion WHERE STRTIPOMENSAJE = 'RE' AND BYTESTADO = 0`;
+        await database.simpleExecute(query, [], { autoCommit: true }).then(async result => {
+            log(`Encontrados: ${result.rows.length} resultados.`)
+            flag = result.rows.length > 0
+            if (flag) {
+                log('Se encontraron muestras a entregar.')
+                for (const msg of result.rows) {
+                    console.log(`[${new Date()}] - Entregando muestra => `, msg);
+                    newmsg = new Message(msg);
+                    newjson = JSON.parse(xml2string(msg.STRMENSAJE));
+                    verynewjson = new RE(newjson.entregaresultado)
+                    newmsg.xmlMSG = verynewjson
+                    verynewjson.id_muestra = 7000172210
+                    await callMinsalMultipart(JSON.stringify(newmsg.xmlMSG), '/entregaResultado', async (result) => {
+                        log("Finalizada llamada a WS entregaResultado.")
+                        if (result.status !== 200) {
+                            log(`Error => ${result}`)
+                            newmsg.state = -1;
+                            newmsg.response = JSON.stringify(result.data)
+                        } else {
+                            log(`Resultado entregado. Respuesta => ${JSON.stringify(result.data)}`)
+                            newmsg.state = 1;
+                            newmsg.response = JSON.stringify(result.data);
+                        }
+                        let query = newmsg.reUpdateQuery();
+                        console.log("UPDATE Query => ", query);
+                        await database.simpleExecute(query, [], { autoCommit: true }).then(result => {
+                            console.log(result);
+                            const res = result.rowsAffected > 0 ? "RE actualizado" : "RE NO actualizado";
+                            log(`Registro ${newmsg.idmensaje} ${res}`)
+                            log(`Proceso finalizado para msg id:${newmsg.idmensaje}`)
+                        })
+                    }).catch(err => {
+                        log('Ocurrió un error al llamar al WS entregaResultado.')
+                        log(err);
+                    })
+                };
+            } else {
+                log('NO se encontraron muestras a entregar.')
+            }
+        }).catch(err => { console.log("Hubo un error => ", err) });
+    }
+
+    return null
+}
+
+const callMinsalMultipart = async (payload, endpoint, callback) => {
+    log(`Preparando llamada a WS ${endpoint}`)
+
+    await fs.writeFile('resultado.txt', payload, async (err) => {
+
+        if (err) {
+            console.log("Error => ", err);
+            return err
+        }
+        let formData = new FormData();
+        const stream = fs.createReadStream(__dirname + '/resultado.txt');
+
+        formData.append('parametros', payload);
+        formData.append('upload ', stream, 'resultado.txt');
+        let data;
+        await formData.getLength(async (err, len) => {
+            const formHeaders = formData.getHeaders({ ACCESSKEY: env.akey, 'Content-Length': len });
+            console.log("HEADERS", formHeaders);
+
+            log('Llamanda axios')
+            await axios.post(endpoint, formData, {
+                baseURL: env.minsalWS,
+                headers: { ...formHeaders },
+                data: formData
+            })
+                .then(response => {
+                    data = response;
+                })
+                .catch(error => {
+                    data = error.response;
+                });
+
+            callback(data)
+        })
+    })
+};
+
 
 // app.use('/samples', require('./routes/samples'));
 // app.use('/users', require('./routes/users'));
 
 // Start webserver
 app.listen(PORT, () => {
-    console.log(`Server started on port ${PORT}`);
+    console.log(`WebServer iniciado en puerto ${PORT}`);
 });
