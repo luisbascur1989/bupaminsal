@@ -119,6 +119,7 @@ const tmprocess = async () => {
         oracledb.fetchAsString = [oracledb.CLOB]
         let query = `SELECT * FROM DEVELOPERS.minsal_integracion WHERE STRTIPOMENSAJE = 'TM' AND BYTESTADO = 0`;
         await database.simpleExecute(query, [], { autoCommit: true }).then(async result => {
+
             log(`Encontrados: ${result.rows.length} resultados.`)
             flag = result.rows.length > 0
             if (flag) {
@@ -144,7 +145,7 @@ const tmprocess = async () => {
                         }
                         let query = newmsg.tmUpdateQuery();
                         console.log("UPDATE Query => ", query);
-                        await database.simpleExecute(query, [], { autoCommit: true }).then(result => {
+                        database.simpleExecute(query, [], { autoCommit: true }).then(result => {
                             console.log(result);
                             const res = result.rowsAffected > 0 ? "TM actualizado" : "TM NO actualizado";
                             log(`Registro ${newmsg.idmensaje} ${res}`)
