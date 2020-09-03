@@ -43,6 +43,34 @@ class Message {
                     BYTESTADO = ${this.state} 
                 WHERE IDMENSAJE = ${this.idmensaje}`
     }
+
+    getHTML() {
+        let estado = "";
+        switch (this.state) {
+            case -1:
+                estado = "ERROR"
+                break;
+            case 0:
+                estado = "READY"
+                break;
+            case 1:
+                estado = "PROCESADO"
+            default:
+                break;
+        }
+        return `
+        <td>${this.idmensaje}</d>
+        <td>${this.dnlabReq}</d>
+        <td>${this.dnlabReqID}</d>
+        <td>${this.dnlabSampleDate}</d>
+        <td>${this.minsalSample}</d>
+        <td>${this.msgType}</d>
+        <td>${this.sampleCreationDate}</d>
+        <td>"${this.xmlMSG}"</d>
+        <td>${estado}</d>
+        <td>${this.sampleTimestamp}</d>
+        <td>${this.response}</d>`
+    }
 }
 
 module.exports = { Message }

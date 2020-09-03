@@ -56,32 +56,45 @@ app.get('/samples/reset', async (req, res) => {
     })
 })
 
+app.get('/', (req, res) => {
+    res.status(200).sendFile(__dirname + '/index.html')
+})
+
 app.get('/samples/:type', async (req, res) => {
     const typ = req.params.type.toUpperCase();
     console.log("Solicitud => ", typ)
-    if (typ === 'TM' || typ === 'CK' || typ === 'RE') {
-        let response = new Array();
+    if (typ === 'TM' || typ === 'CK' || typ === 'RE' || typ === 'ALL') {
+        const stat = req.query.stat;
         oracledb.fetchAsString = [oracledb.CLOB]
-        let query = `SELECT * FROM DEVELOPERS.minsal_integracion WHERE STRTIPOMENSAJE = '${typ}'`;
-        database.simpleExecute(query, [], { autoCommit: true }).then(async result => {
+        let query = "SELECT * FROM DEVELOPERS.minsal_integracion "
+
+        //? ALL C/ESTADO
+        query += typ === 'ALL' && stat !== undefined ? ` WHERE BYTESTADO = ${stat} ` : "";
+
+        //? !ALL S/ESTADO
+        query += typ !== 'ALL' ? ` WHERE STRTIPOMENSAJE = '${typ}' ` : "";
+
+        //? !LL C/ESTADO
+        query += typ !== 'ALL' && stat !== undefined ? ` AND BYTESTADO = ${stat} ` : "";
+
+        console.log("QUERY => ", query);
+        await database.simpleExecute(query, [], { autoCommit: true }).then(async result => {
             log(`Encontrados: ${result.rows.length} resultados.`)
             if (result.rows.length > 0) {
                 // Procesar resultados
-                for (msg of result.rows) {
-                    response.push(msg)
-                }
-                console.log(response)
-                response = result.rows
+                const html = buildHTML(result.rows)
+                res.send(html)
 
             } else {
-                // Procesar no encontrado
+                res.send("No hay registros.")
             }
-            res.send(result.rows)
-        }).catch(err => console.log("Ocurrió un error => ", err))
+        }).catch(err => {
+            console.log("Ocurrió un error => ", err)
+            res.send("Ocurrió un error =>")
+        })
 
     } else {
-
-        res.json({ "ERROR": "Solicitud mal formulada." })
+        res.status(400).json({ "ERROR": "Solicitud mal formulada." })
     }
 })
 
@@ -130,7 +143,7 @@ const tmprocess = async () => {
                     newjson = JSON.parse(xml2string(msg.STRMENSAJE));
                     verynewjson = new TM(newjson.crearmuestras)
                     newmsg.xmlMSG = verynewjson
-                    newmsg.xmlMSG.codigo_muestra_cliente = Date.now()
+                    // newmsg.xmlMSG.codigo_muestra_cliente = Date.now()
                     await callMinsalJSON(newmsg.xmlMSG, '/crearMuestras').then(async result => {
                         log("Finalizada llamada a crearMuestraWS.")
                         if (result.status !== 200) {
@@ -183,6 +196,7 @@ const ckprocess = async () => {
                     newjson = JSON.parse(xml2string(msg.STRMENSAJE));
                     verynewjson = new CK(newjson.recepcionarmuestra)
                     newmsg.xmlMSG = verynewjson
+                    // newmsg.xmlMSG.id_muestra = 7000188084
                     await callMinsalJSON(newmsg.xmlMSG, '/recepcionarMuestra').then(async result => {
                         log("Finalizada llamada a WS recepcionarMuestra.")
                         if (result.status !== 200) {
@@ -196,7 +210,7 @@ const ckprocess = async () => {
                         }
                         let query = newmsg.ckUpdateQuery();
                         console.log("UPDATE Query => ", query);
-                        await database.simpleExecute(query, [], { autoCommit: true }).then(result => {
+                        database.simpleExecute(query, [], { autoCommit: true }).then(result => {
                             console.log(result);
                             const res = result.rowsAffected > 0 ? "CK actualizado" : "CK NO actualizado";
                             log(`Registro ${newmsg.idmensaje} ${res}`)
@@ -234,7 +248,7 @@ const reprocess = async () => {
                     newjson = JSON.parse(xml2string(msg.STRMENSAJE));
                     verynewjson = new RE(newjson.entregaresultado)
                     newmsg.xmlMSG = verynewjson
-                    verynewjson.id_muestra = 7000172210
+                    // verynewjson.id_muestra = 7000188084
                     await callMinsalMultipart(JSON.stringify(newmsg.xmlMSG), '/entregaResultado', async (result) => {
                         log("Finalizada llamada a WS entregaResultado.")
                         if (result.status !== 200) {
@@ -248,7 +262,7 @@ const reprocess = async () => {
                         }
                         let query = newmsg.reUpdateQuery();
                         console.log("UPDATE Query => ", query);
-                        await database.simpleExecute(query, [], { autoCommit: true }).then(result => {
+                        database.simpleExecute(query, [], { autoCommit: true }).then(result => {
                             console.log(result);
                             const res = result.rowsAffected > 0 ? "RE actualizado" : "RE NO actualizado";
                             log(`Registro ${newmsg.idmensaje} ${res}`)
@@ -305,6 +319,30 @@ const callMinsalMultipart = async (payload, endpoint, callback) => {
     })
 };
 
+const buildHTML = (msgs) => {
+    let arrayfinal = "";
+    for (let i = 0; i < msgs.length; i++) {
+        let base = `<tr><th scope="row">${i + 1}</h>`
+        let temp = new Message(msgs[i]);
+        let data = temp.getHTML();
+        arrayfinal += `${base}${data}</tr>`;
+    }
+    return `<!DOCTYPE html><html lang="en"><head><link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css"><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Reporte de Mensajes</title></head>    
+    <body><table class="table"><thead>
+                <th scope="col">#</th>
+                <th scope="col">IDDB</th>
+                <th scope="col">IDLAB</th>
+                <th scope="col">IDINTERNO</th>
+                <th scope="col">FECHA</th>
+                <th scope="col">ID MINSAL</th>
+                <th scope="col">TIPO</th>
+                <th scope="col">CREACIÓN</th>
+                <th scope="col">XML</th>
+                <th scope="col">ESTADO</th>
+                <th scope="col">TIEMPO</th>
+                <th scope="col">RESPUESTA</th>
+            </thead><tbody>${arrayfinal}</tbody></table></body></html>`;
+}
 
 // app.use('/samples', require('./routes/samples'));
 // app.use('/users', require('./routes/users'));
