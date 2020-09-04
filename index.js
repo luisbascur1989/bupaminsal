@@ -131,7 +131,7 @@ const tmprocess = async () => {
     if (flag) {
         oracledb.fetchAsString = [oracledb.CLOB]
         let query = `SELECT * FROM DEVELOPERS.minsal_integracion WHERE STRTIPOMENSAJE = 'TM' AND BYTESTADO = 0`;
-        await database.simpleExecute(query, [], { autoCommit: true }).then(async result => {
+        await database.simpleExecute(query, [], { autoCommit: true, maxRows: 10 }).then(async result => {
 
             log(`Encontrados: ${result.rows.length} resultados.`)
             flag = result.rows.length > 0
@@ -185,7 +185,7 @@ const ckprocess = async () => {
     if (flag) {
         oracledb.fetchAsString = [oracledb.CLOB]
         let query = `SELECT * FROM DEVELOPERS.minsal_integracion WHERE STRTIPOMENSAJE = 'CK' AND BYTESTADO = 0`;
-        await database.simpleExecute(query, [], { autoCommit: true }).then(async result => {
+        await database.simpleExecute(query, [], { autoCommit: true, maxRows: 10 }).then(async result => {
             log(`Encontrados: ${result.rows.length} resultados.`)
             flag = result.rows.length > 0
             if (flag) {
@@ -237,7 +237,7 @@ const reprocess = async () => {
     if (flag) {
         oracledb.fetchAsString = [oracledb.CLOB]
         let query = `SELECT * FROM DEVELOPERS.minsal_integracion WHERE STRTIPOMENSAJE = 'RE' AND BYTESTADO = 0`;
-        await database.simpleExecute(query, [], { autoCommit: true }).then(async result => {
+        await database.simpleExecute(query, [], { autoCommit: true, maxRows: 10 }).then(async result => {
             log(`Encontrados: ${result.rows.length} resultados.`)
             flag = result.rows.length > 0
             if (flag) {
