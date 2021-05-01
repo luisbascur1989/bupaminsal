@@ -6,7 +6,9 @@ class TM {
         this.cod_deis = Number(obj.cod_deis._text);
         this.rut_medico = obj.rut_medico._text;
         this.paciente_run = Number(obj.paciente_run._text);
-        this.paciente_dv = Number(obj.paciente_dv._text);
+        this.paciente_dv = obj.paciente_dv._text;
+        this.paciente_pasaporte = obj.paciente_pasaporte._text;
+        this.paciente_ext_paisorigen = obj.paciente_ext_paisorigen._text;
         this.paciente_nombres = obj.paciente_nombres._text;
         this.paciente_ap_pat = obj.paciente_ap_pat._text;
         this.paciente_ap_mat = obj.paciente_ap_mat._text;

@@ -120,36 +120,32 @@ const callMinsalJSON = async (msg, endpoint) => {
 }
 
 const reset = async () => {
-    const query = `UPDATE DEVELOPERS.minsal_integracion SET BYTESTADO = 0`;
+    const query = `UPDATE DEVELOPERS.minsal_integracion SET BYTESTADO = 0 , STRRESPUESTA = '' `;
     await database.simpleExecute(query, [], { autoCommit: true }).then(result => { console.log("Este fue el resultado =>", result.rowsAffected); return result.rowsAffected > 0 }).catch(err => { console.log("Error => ", err); return false })
 }
 
 const tmprocess = async () => {
     log('Se inicia proceso CREACIÓN DE MUESTRAS')
-    let flag = true;
+    let flag = false;
     //?      - Traer 10 registros de DB tipo TM
     if (flag) {
         oracledb.fetchAsString = [oracledb.CLOB]
-        let query = `SELECT * FROM DEVELOPERS.minsal_integracion WHERE STRTIPOMENSAJE = 'TM' AND BYTESTADO = 0`;
-        await database.simpleExecute(query, [], { autoCommit: true, maxRows: 10 }).then(async result => {
+        let query = `SELECT * FROM DEVELOPERS.minsal_integracion WHERE STRTIPOMENSAJE = 'TM' AND BYTESTADO = 0 AND dtmdataaccettazione >= sysdate - 7 AND ZONA = 'ELSA'`;
+        await database.simpleExecute(query, [], { autoCommit: true, maxRows: env.rowLimit }).then(async result => {
 
             log(`Encontrados: ${result.rows.length} resultados.`)
             flag = result.rows.length > 0
             if (flag) {
                 log('Se encontraron muestras a crear.')
                 for (const msg of result.rows) {
-                    console.log(`[${new Date()}] - Creando muestra => `, msg);
-                    newmsg = new Message(msg);
-                    newjson = JSON.parse(xml2string(msg.STRMENSAJE));
-                    verynewjson = new TM(newjson.crearmuestras)
-                    newmsg.xmlMSG = verynewjson
+                    const newmsg = await createMsg(msg, 'TM');
                     // newmsg.xmlMSG.codigo_muestra_cliente = Date.now()
                     await callMinsalJSON(newmsg.xmlMSG, '/crearMuestras').then(async result => {
                         log("Finalizada llamada a crearMuestraWS.")
                         if (result.status !== 200) {
-                            log(`Error => ${result}`)
+                            log(`Error en llamada => ${result.response}`)
                             newmsg.state = -1;
-                            newmsg.response = JSON.stringify(result.data)
+                            newmsg.response = JSON.stringify(result.data.error)
                         } else {
                             log(`Muestra creada. Respuesta => ${JSON.stringify(result.data[0])}`)
                             newmsg.state = 1;
@@ -180,29 +176,25 @@ const tmprocess = async () => {
 
 const ckprocess = async () => {
     log('Se inicia proceso RECEPCIÓN DE MUESTRAS')
-    let flag = true;
+    let flag = false;
     //?      - Traer 10 registros de DB tipo CK
     if (flag) {
         oracledb.fetchAsString = [oracledb.CLOB]
-        let query = `SELECT * FROM DEVELOPERS.minsal_integracion WHERE STRTIPOMENSAJE = 'CK' AND BYTESTADO = 0`;
-        await database.simpleExecute(query, [], { autoCommit: true, maxRows: 10 }).then(async result => {
+        let query = `select m.idmensaje, m.bytidlab, m.stridrichiesta, m.zona, m.dtmdataaccettazione, m.stridcampetichetta, m.idmuestraminsal, m.strtipomensaje, m.dtmfechahoracreacion, replace(m.strmensaje, m.stridcampetichetta, (select m1.idmuestraminsal from developers.minsal_integracion m1 where m1.strtipomensaje = 'TM' and M1.Stridcampetichetta = m.Stridcampetichetta and length(m1.idmuestraminsal) > 9)) strmensaje, m.bytestado, m.dtmfechahoraproceso, m.strrespuesta, m.intentos, m.ult_respuesta from developers.minsal_integracion m where strtipomensaje = 'CK' and m.BYTESTADO = 0 AND m.ZONA = 'ELSA' and m.dtmdataaccettazione >= sysdate - 7 and exists (select 1 from developers.minsal_integracion m2 where m2.stridcampetichetta = m.stridcampetichetta and m2.strtipomensaje = 'TM' and length(m2.idmuestraminsal) > 9)`;
+        await database.simpleExecute(query, [], { autoCommit: true, maxRows: env.rowLimit }).then(async result => {
             log(`Encontrados: ${result.rows.length} resultados.`)
             flag = result.rows.length > 0
             if (flag) {
                 log('Se encontraron muestras a recepcionar.')
                 for (const msg of result.rows) {
-                    console.log(`[${new Date()}] - Recepcionando muestra => `, msg);
-                    newmsg = new Message(msg);
-                    newjson = JSON.parse(xml2string(msg.STRMENSAJE));
-                    verynewjson = new CK(newjson.recepcionarmuestra)
-                    newmsg.xmlMSG = verynewjson
+                    const newmsg = await createMsg(msg, 'CK');
                     // newmsg.xmlMSG.id_muestra = 7000188084
                     await callMinsalJSON(newmsg.xmlMSG, '/recepcionarMuestra').then(async result => {
                         log("Finalizada llamada a WS recepcionarMuestra.")
                         if (result.status !== 200) {
                             log(`Error => ${result}`)
                             newmsg.state = -1;
-                            newmsg.response = JSON.stringify(result.data)
+                            newmsg.response = JSON.stringify(result.data.error)
                         } else {
                             log(`Muestra Recepcionada. Respuesta => ${JSON.stringify(result.data[0])}`)
                             newmsg.state = 1;
@@ -236,18 +228,16 @@ const reprocess = async () => {
     //?      - Traer 10 registros de DB tipo RE
     if (flag) {
         oracledb.fetchAsString = [oracledb.CLOB]
-        let query = `SELECT * FROM DEVELOPERS.minsal_integracion WHERE STRTIPOMENSAJE = 'RE' AND BYTESTADO = 0`;
-        await database.simpleExecute(query, [], { autoCommit: true, maxRows: 10 }).then(async result => {
+        let query = `select m.idmensaje, m.bytidlab, m.stridrichiesta, m.zona, m.dtmdataaccettazione, m.stridcampetichetta, m.idmuestraminsal, m.strtipomensaje, m.dtmfechahoracreacion, replace(strmensaje,stridcampetichetta,(select m1.idmuestraminsal from developers.minsal_integracion m1 where m1.strtipomensaje = 'TM' and M1.stridrichiesta = m.stridrichiesta)) strmensaje, m.bytestado, m.dtmfechahoraproceso, m.strrespuesta, m.intentos, m.ult_respuesta from developers.minsal_integracion m where strtipomensaje = 'RE' and m.BYTESTADO = 0 and stridrichiesta = '28935168'`;
+        query = "SELECT * FROM DEVELOPERS.minsal_integracion WHERE STRTIPOMENSAJE = 'RE' AND BYTESTADO = 0";
+        await database.simpleExecute(query, [], { autoCommit: true, maxRows: env.rowLimit }).then(async result => {
             log(`Encontrados: ${result.rows.length} resultados.`)
             flag = result.rows.length > 0
             if (flag) {
                 log('Se encontraron muestras a entregar.')
                 for (const msg of result.rows) {
                     console.log(`[${new Date()}] - Entregando muestra => `, msg);
-                    newmsg = new Message(msg);
-                    newjson = JSON.parse(xml2string(msg.STRMENSAJE));
-                    verynewjson = new RE(newjson.entregaresultado)
-                    newmsg.xmlMSG = verynewjson
+                    const newmsg = await createMsg(msg, 'RE');
                     // verynewjson.id_muestra = 7000188084
                     await callMinsalMultipart(JSON.stringify(newmsg.xmlMSG), '/entregaResultado', async (result) => {
                         log("Finalizada llamada a WS entregaResultado.")
@@ -282,13 +272,44 @@ const reprocess = async () => {
     return null
 }
 
+const createMsg = async (msg, tipo) => {
+    newmsg = new Message(msg);
+    newjson = JSON.parse(xml2string(msg.STRMENSAJE));
+    let verynewjson;
+    switch (tipo) {
+        case 'TM':
+            verynewjson = new TM(newjson.entregaresultado)
+            break;
+        case 'CK':
+            verynewjson = new CK(newjson.entregaresultado)
+            break;
+        case 'RE':
+            const addDigit = (x) => { x = (+x > 9) ? x : '0' + x; return x }
+            verynewjson = new RE(newjson.entregaresultado)
+            newdate = new Date(newmsg.sampleCreationDate);
+            const dd = addDigit(newdate.getDay() + "");
+            const mm = addDigit((newdate.getMonth() + 1) + "");
+            const yyyy = newdate.getFullYear() + "";
+            const hh = addDigit(newdate.getHours() + "");
+            const min = addDigit(newdate.getMinutes() + "");
+            const ss = addDigit(newdate.getSeconds() + "");
+            verynewjson.fecha_hora_resultado_laboratorio = `${dd}-${mm}-${yyyy}T${hh}:${min}:${ss}`;
+            console.log(verynewjson);
+            break;
+        default:
+            break;
+    }
+    newmsg.xmlMSG = verynewjson
+    return newmsg
+}
+
 const callMinsalMultipart = async (payload, endpoint, callback) => {
     log(`Preparando llamada a WS ${endpoint}`)
 
-    await fs.writeFile('resultado.txt', payload, async (err) => {
-
+    Promise.all([fs.writeFile('resultado.txt', payload, async (err) => {
         if (err) {
-            console.log("Error => ", err);
+            console.log("Error => ");
+            console.log(err);
             return err
         }
         let formData = new FormData();
@@ -316,7 +337,7 @@ const callMinsalMultipart = async (payload, endpoint, callback) => {
 
             callback(data)
         })
-    })
+    })])
 };
 
 const buildHTML = (msgs) => {

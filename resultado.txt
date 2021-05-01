@@ -1,1 +1,1 @@
-{"id_muestra":7000188084,"resultado":"Positivo"}
+{"id_muestra":9210583301,"resultado":"Muestra no apta","fecha_hora_resultado_laboratorio":"01-03-2021T01:05:06"}

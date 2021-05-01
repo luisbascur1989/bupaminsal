@@ -17,7 +17,8 @@ class Message {
         return `UPDATE DEVELOPERS.minsal_integracion 
                 SET STRRESPUESTA = '${this.response}', 
                     BYTESTADO = ${this.state}, 
-                    IDMUESTRAMINSAL = ${this.minsalSample}
+                    IDMUESTRAMINSAL = ${this.minsalSample},
+                    DTMFECHAHORAPROCESO = sysdate 
                 WHERE IDMENSAJE = ${this.idmensaje}`
     }
 
@@ -25,7 +26,8 @@ class Message {
         return `UPDATE DEVELOPERS.minsal_integracion 
                 SET STRRESPUESTA = '${this.response}', 
                     BYTESTADO = ${this.state}, 
-                    IDMUESTRAMINSAL = ${this.minsalSample} 
+                    IDMUESTRAMINSAL = ${this.minsalSample} ,
+                    DTMFECHAHORAPROCESO = sysdate 
                 WHERE IDMENSAJE = ${this.idmensaje}`
     }
 
@@ -33,14 +35,16 @@ class Message {
         return `UPDATE DEVELOPERS.minsal_integracion 
                 SET STRRESPUESTA = '${this.response}', 
                     BYTESTADO = ${this.state}, 
-                    IDMUESTRAMINSAL = ${this.minsalSample} 
+                    IDMUESTRAMINSAL = ${this.minsalSample} ,
+                    DTMFECHAHORAPROCESO = sysdate 
                 WHERE IDMENSAJE = ${this.idmensaje}`
     }
 
     errUpdateQuery(res) {
         return `UPDATE DEVELOPERS.minsal_integrahcion
                 SET STRRESPUESTA = '${this.response}' ,
-                    BYTESTADO = ${this.state} 
+                    BYTESTADO = ${this.state} ,
+                    DTMFECHAHORAPROCESO = sysdate 
                 WHERE IDMENSAJE = ${this.idmensaje}`
     }
 
